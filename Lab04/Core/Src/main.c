@@ -6,49 +6,32 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
+  * Copyright (c) 2026 STMicroelectronics. All rights reserved.
+  * This software is licensed under terms in LICENSE file.
   *
   ******************************************************************************
   */
 /* USER CODE END Header */
+
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
-
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
-
 SPI_HandleTypeDef hspi1;
-
 TIM_HandleTypeDef htim2;
-
 PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE BEGIN PV */
+/* -------------------- TASK 3: 3 LEDs at different rates -------------------- */
+uint16_t countA = 0;  // LED1 (Red, PE9)
+uint16_t countB = 0;  // LED2 (Green, PE10)
+uint16_t countC = 0;  // LED3 (Blue, PE11)
+
+#define THRESHOLD_A 500   // 1 Hz → toggle every 500 ms
+#define THRESHOLD_B 200   // 2.5 Hz → toggle every 200 ms
+#define THRESHOLD_C 100   // 5 Hz → toggle every 100 ms
+/* -------------------------------------------------------------------------- */
 
 /* USER CODE END PV */
 
@@ -59,31 +42,61 @@ static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USB_PCD_Init(void);
-/* USER CODE BEGIN PFP */
 
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-//TASK 2:
+
+/* -------------------- TASK 1: -----------------------------
+void delay_ms(uint32_t ms){
+    __HAL_TIM_SET_COUNTER(&htim2, 0);
+    HAL_TIM_Base_Start(&htim2);
+    while (__HAL_TIM_GET_COUNTER(&htim2) < ms);
+    HAL_TIM_Base_Stop(&htim2);
+}
+---------------------------------------------------------------------------*/
+
+/* -------------------- TASK 2:---------------------
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    if (htim->Instance == TIM2)
+    if(htim->Instance == TIM2)
     {
-        HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_9); // Red (North) LED
+        HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_9); // Red LED
     }
 }
+---------------------------------------------------------------------------*/
 
-//TASK 1
-// void delay_ms(uint32_t ms){
-//     __HAL_TIM_SET_COUNTER(&htim2, 0);
-//     HAL_TIM_Base_Start(&htim2);
+/* -------------------- TASK 3------------- */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if(htim->Instance == TIM2)
+    {
+        // Increment software counters
+        countA++;
+        countB++;
+        countC++;
 
-//     while (__HAL_TIM_GET_COUNTER(&htim2) < ms);
+        // LED1: PE9 (Red)
+        if(countA >= THRESHOLD_A)
+        {
+            HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_9);
+            countA = 0;
+        }
 
-//     HAL_TIM_Base_Stop(&htim2);
-// }
+        // LED2: PE10 (Green)
+        if(countB >= THRESHOLD_B)
+        {
+            HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);
+            countB = 0;
+        }
 
+        // LED3: PE11 (Blue)
+        if(countC >= THRESHOLD_C)
+        {
+            HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_11);
+            countC = 0;
+        }
+    }
+}
+/* -------------------------------------------------------------------------- */
 
 /* USER CODE END 0 */
 
@@ -93,58 +106,28 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   */
 int main(void)
 {
-
-  /* USER CODE BEGIN 1 */
-//task 1:
-// while (__HAL_TIM_GET_COUNTER(&htim2) < ms);
-
-// HAL_TIM_Base_Stop(&htim2);
-// }
-
-
-  /* USER CODE END 1 */
-
-  /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  /* MCU Initialization */
   HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
   SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
+  /* Initialize peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
   MX_SPI1_Init();
   MX_TIM2_Init();
   MX_USB_PCD_Init();
-  /* USER CODE BEGIN 2 */
 
-  //TASK 2
-  HAL_TIM_Base_Start_IT(&htim2);
+  /* -------------------- TASK 3: Start TIM2 in interrupt mode --------------- */
+  HAL_TIM_Base_Start_IT(&htim2);  // 1 ms interrupt for software counters
+  HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(TIM2_IRQn);
 
-/* USER CODE END 2 */
+  /* ------------------------------------------------------------------------ */
 
-  /* USER CODE BEGIN WHILE */
+  /* Infinite loop */
   while (1)
   {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
   }
-  /* USER CODE END 3 */
-  /* USER CODE BEGIN 2 */
-// Start TIM2 in interrupt mode for Task 2
-
-
 }
 
 /**
@@ -302,7 +285,7 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 47999;
+  htim2.Init.Prescaler = 47;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -379,6 +362,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_TogglePin(LD9_GPIO_Port, LD9_Pin);   // PE9
+  HAL_GPIO_TogglePin(LD10_GPIO_Port, LD10_Pin); // PE10
+  HAL_GPIO_TogglePin(LD8_GPIO_Port, LD8_Pin);   // PE11
+
   HAL_GPIO_WritePin(GPIOE, CS_I2C_SPI_Pin|LD4_Pin|LD3_Pin|LD5_Pin
                           |LD7_Pin|LD9_Pin|LD10_Pin|LD8_Pin
                           |LD6_Pin, GPIO_PIN_RESET);
