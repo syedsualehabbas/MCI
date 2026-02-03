@@ -12,25 +12,83 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include <string.h>
+
+/* NOTE: If you want to use %.2f formatting for floats in sprintf:
+ * Go to Project Properties -> C/C++ Build -> Settings -> MCU Settings
+ * Check "Use float with printf from newlib-nano"
+ * This will increase code size by ~8KB
+ * 
+ * Alternative: Use the integer conversion method shown in this code
+ * 
+ * IMPORTANT FOR INPUT CAPTURE:
+ * To reduce noise on the input signal:
+ * 1. In CubeMX, set TIM3 Channel 1 Input Capture Filter to 8 or 15
+ * 2. This filters out glitches shorter than N timer clock cycles
+ * 3. Or add a hardware capacitor (e.g., 100nF) on the input pin
+ */
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
+
 SPI_HandleTypeDef hspi1;
+
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+
+UART_HandleTypeDef huart2;
+
 PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE BEGIN PV */
 /* -------------------- TASK 3: 3 LEDs at different rates -------------------- */
-uint16_t countA = 0;  // LED1 (Red, PE9)
-uint16_t countB = 0;  // LED2 (Green, PE10)
-uint16_t countC = 0;  // LED3 (Blue, PE11)
+// uint16_t countA = 0;  // LED1 (Red, PE9)
+// uint16_t countB = 0;  // LED2 (Green, PE10)
+// uint16_t countC = 0;  // LED3 (Blue, PE11)
 
-#define THRESHOLD_A 500   // 1 Hz → toggle every 500 ms
-#define THRESHOLD_B 200   // 2.5 Hz → toggle every 200 ms
-#define THRESHOLD_C 100   // 5 Hz → toggle every 100 ms
+// #define THRESHOLD_A 500   // 1 Hz → toggle every 500 ms
+// #define THRESHOLD_B 200   // 2.5 Hz → toggle every 200 ms
+// #define THRESHOLD_C 100   // 5 Hz → toggle every 100 ms
+/* -------------------------------------------------------------------------- */
+
+/* -------------------- TASK 4: Frequency Measurement -------------------- */
+uint32_t last_capture = 0;
+uint32_t period = 0;
+float frequency = 0.0;
+uint8_t overflow_count = 0;
+uint8_t valid_measurement = 0;
+uint8_t measurement_count = 0;  // Counter to reduce UART transmissions
+
+// Timer clock frequency calculation:
+// APB1 clock = 24 MHz, but timer clock = APB1 × 2 = 48 MHz (due to APB prescaler rule)
+// TIM3 Prescaler = 1 (set in CubeMX), so effective divider = Prescaler + 1 = 2
+// Effective Timer Clock = 48 MHz / 2 = 24 MHz
+#define TIMER_CLOCK_FREQ 48000000  // Base timer clock (before prescaler)
+#define TIM3_PRESCALER 1            // Prescaler value (set in CubeMX)
+
+char uart_buffer[100];
 /* -------------------------------------------------------------------------- */
 
 /* USER CODE END PV */
@@ -42,10 +100,16 @@ static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USB_PCD_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_USART2_UART_Init(void);
+/* USER CODE BEGIN PFP */
 
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/* -------------------- TASK 1: -----------------------------
+/* -------------------- TASK 1: Custom Delay Function -----------------------------
 void delay_ms(uint32_t ms){
     __HAL_TIM_SET_COUNTER(&htim2, 0);
     HAL_TIM_Base_Start(&htim2);
@@ -54,7 +118,7 @@ void delay_ms(uint32_t ms){
 }
 ---------------------------------------------------------------------------*/
 
-/* -------------------- TASK 2:---------------------
+/* -------------------- TASK 2: Simple LED Toggle with Timer Interrupt---------------------
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if(htim->Instance == TIM2)
@@ -64,38 +128,106 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 ---------------------------------------------------------------------------*/
 
-/* -------------------- TASK 3------------- */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+/* -------------------- TASK 3: Multiple LEDs at Different Rates------------- */
+// void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+// {
+//     if(htim->Instance == TIM2)
+//     {
+//         // Increment software counters
+//         countA++;
+//         countB++;
+//         countC++;
+
+//         // LED1: PE9 (Red)
+//         if(countA >= THRESHOLD_A)
+//         {
+//             HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_9);
+//             countA = 0;
+//         }
+
+//         // LED2: PE10 (Green)
+//         if(countB >= THRESHOLD_B)
+//         {
+//             HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);
+//             countB = 0;
+//         }
+
+//         // LED3: PE11 (Blue)
+//         if(countC >= THRESHOLD_C)
+//         {
+//             HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_11);
+//             countC = 0;
+//         }
+//     }
+// }
+/* -------------------------------------------------------------------------- */
+
+
+/* -------------------------------TASK 4: Frequency Measurement--------------------------------------- */
+
+/**
+  * @brief  Input Capture callback for frequency measurement
+  * @param  htim: Timer handle
+  * @retval None
+  */
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
-    if(htim->Instance == TIM2)
+    if(htim->Instance == TIM3)
     {
-        // Increment software counters
-        countA++;
-        countB++;
-        countC++;
-
-        // LED1: PE9 (Red)
-        if(countA >= THRESHOLD_A)
+        if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
         {
-            HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_9);
-            countA = 0;
-        }
-
-        // LED2: PE10 (Green)
-        if(countB >= THRESHOLD_B)
-        {
-            HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);
-            countB = 0;
-        }
-
-        // LED3: PE11 (Blue)
-        if(countC >= THRESHOLD_C)
-        {
-            HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_11);
-            countC = 0;
+            // Read the captured value
+            uint32_t current_capture = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+            
+            // Calculate period (handle overflow)
+            if(current_capture >= last_capture)
+            {
+                period = current_capture - last_capture;
+            }
+            else
+            {
+                // Timer overflow occurred
+                period = (0xFFFF - last_capture) + current_capture + 1;
+            }
+            
+            // Update last capture value
+            last_capture = current_capture;
+            
+            // Calculate frequency
+            // Frequency = Timer_Clock / [(Prescaler + 1) × Period]
+            if(period > 0)
+            {
+                frequency = (float)TIMER_CLOCK_FREQ / ((float)(TIM3_PRESCALER + 1) * (float)period);
+                valid_measurement = 1;
+            }
+            
+            // Reset overflow counter
+            overflow_count = 0;
         }
     }
 }
+
+/**
+  * @brief  Timer overflow callback to detect very slow signals
+  * @param  htim: Timer handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if(htim->Instance == TIM3)
+    {
+        overflow_count++;
+        
+        // If too many overflows, signal is too slow or not present
+        if(overflow_count > 10)
+        {
+            frequency = 0.0;
+            period = 0;
+            valid_measurement = 0;
+        }
+    }
+}
+
 /* -------------------------------------------------------------------------- */
 
 /* USER CODE END 0 */
@@ -106,28 +238,100 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   */
 int main(void)
 {
-  /* MCU Initialization */
+
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
   SystemClock_Config();
 
-  /* Initialize peripherals */
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
   MX_SPI1_Init();
   MX_TIM2_Init();
   MX_USB_PCD_Init();
+  MX_TIM3_Init();
+  MX_USART2_UART_Init();
+  /* USER CODE BEGIN 2 */
 
-  /* -------------------- TASK 3: Start TIM2 in interrupt mode --------------- */
-  HAL_TIM_Base_Start_IT(&htim2);  // 1 ms interrupt for software counters
-  HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(TIM2_IRQn);
+  /* -------------------- TASK 4: Start Input Capture Timer -------------------- */
+  // Start TIM3 in Input Capture mode with interrupt
+  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
+  
+  // Optional: Start base timer interrupt for overflow detection
+  HAL_TIM_Base_Start_IT(&htim3);
+  
+  // Send initialization message via UART
+  sprintf(uart_buffer, "Frequency Measurement Started\r\n");
+  HAL_UART_Transmit(&huart2, (uint8_t*)uart_buffer, strlen(uart_buffer), HAL_MAX_DELAY);
+  /* -------------------------------------------------------------------------- */
 
-  /* ------------------------------------------------------------------------ */
+  /* USER CODE END 2 */
 
   /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
   while (1)
   {
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+    
+    /* -------------------- TASK 4: Display Frequency Measurement -------------------- */
+    if(valid_measurement)
+    {
+        measurement_count++;
+        
+        // At high frequencies, only transmit every Nth measurement to avoid blocking
+        // Adjust this value: 1 = transmit every time, 10 = every 10th measurement
+        uint8_t transmit_interval = 1;
+        
+        // Adaptive transmission rate based on frequency
+        if(frequency > 100000) {
+            transmit_interval = 100;  // Every 100th measurement above 100kHz
+        } else if(frequency > 10000) {
+            transmit_interval = 10;   // Every 10th measurement above 10kHz
+        }
+        
+        if(measurement_count >= transmit_interval)
+        {
+            measurement_count = 0;
+            
+            // Convert frequency to integer and decimal parts for display
+            uint32_t freq_int = (uint32_t)frequency;
+            uint32_t freq_dec = (uint32_t)((frequency - freq_int) * 100);
+            
+            // Send frequency data via UART
+            sprintf(uart_buffer, "Period: %lu ticks, Frequency: %lu.%02lu Hz\r\n", 
+                    period, freq_int, freq_dec);
+            HAL_UART_Transmit(&huart2, (uint8_t*)uart_buffer, strlen(uart_buffer), HAL_MAX_DELAY);
+            
+            // Optional: Toggle LED to indicate measurement
+            HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_9);  // Red LED
+        }
+        
+        // Reset flag (IMPORTANT: do this last, after transmission)
+        valid_measurement = 0;
+    }
+    
+    // No delay here - continuous monitoring
+    /* -------------------------------------------------------------------------- */
   }
+  /* USER CODE END 3 */
 }
 
 /**
@@ -169,7 +373,9 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB|RCC_PERIPHCLK_I2C1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB|RCC_PERIPHCLK_USART2
+                              |RCC_PERIPHCLK_I2C1;
+  PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
   PeriphClkInit.USBClockSelection = RCC_USBCLKSOURCE_PLL;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
@@ -285,9 +491,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 47;
+  htim2.Init.Prescaler = 47999;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 999;
+  htim2.Init.Period = 0;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -308,6 +514,89 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 1;  // Changed to 1 for extended range
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 0xFFFF;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_IC_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim3, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
 
 }
 
@@ -362,10 +651,6 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_TogglePin(LD9_GPIO_Port, LD9_Pin);   // PE9
-  HAL_GPIO_TogglePin(LD10_GPIO_Port, LD10_Pin); // PE10
-  HAL_GPIO_TogglePin(LD8_GPIO_Port, LD8_Pin);   // PE11
-
   HAL_GPIO_WritePin(GPIOE, CS_I2C_SPI_Pin|LD4_Pin|LD3_Pin|LD5_Pin
                           |LD7_Pin|LD9_Pin|LD10_Pin|LD8_Pin
                           |LD6_Pin, GPIO_PIN_RESET);
