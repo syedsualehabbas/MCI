@@ -65,16 +65,24 @@ static void MX_USB_PCD_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+//TASK 2:
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM2)
+    {
+        HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_9); // Red (North) LED
+    }
+}
 
 //TASK 1
-void delay_ms(uint32_t ms){
-    __HAL_TIM_SET_COUNTER(&htim2, 0);
-    HAL_TIM_Base_Start(&htim2);
+// void delay_ms(uint32_t ms){
+//     __HAL_TIM_SET_COUNTER(&htim2, 0);
+//     HAL_TIM_Base_Start(&htim2);
 
-    while (__HAL_TIM_GET_COUNTER(&htim2) < ms);
+//     while (__HAL_TIM_GET_COUNTER(&htim2) < ms);
 
-    HAL_TIM_Base_Stop(&htim2);
-}
+//     HAL_TIM_Base_Stop(&htim2);
+// }
 
 
 /* USER CODE END 0 */
@@ -87,6 +95,11 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+//task 1:
+// while (__HAL_TIM_GET_COUNTER(&htim2) < ms);
+
+// HAL_TIM_Base_Stop(&htim2);
+// }
 
 
   /* USER CODE END 1 */
@@ -115,25 +128,24 @@ int main(void)
   MX_USB_PCD_Init();
   /* USER CODE BEGIN 2 */
 
-  /* USER CODE END 2 */
+  //TASK 2
+  HAL_TIM_Base_Start_IT(&htim2);
 
-  /* Infinite loop */
+/* USER CODE END 2 */
+
   /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+    /* USER CODE END WHILE */
 
-//task 1:
-while (1)
-{
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_SET);   // RED LED ON
-    delay_ms(1000);
-
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_RESET); // RED LED OFF
-    delay_ms(1000);
-}
-
-}
-
+    /* USER CODE BEGIN 3 */
+  }
   /* USER CODE END 3 */
+  /* USER CODE BEGIN 2 */
+// Start TIM2 in interrupt mode for Task 2
 
+
+}
 
 /**
   * @brief System Clock Configuration
@@ -292,7 +304,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 47999;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4294967295;
+  htim2.Init.Period = 999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
