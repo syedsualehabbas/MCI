@@ -102,89 +102,78 @@ int main(void)
   MX_TIM3_Init();
   MX_USB_PCD_Init();
   /* USER CODE BEGIN 2 */
-/* USER CODE BEGIN 2 */
-// Start PWM on all three channels
-HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); // Red
-HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2); // Green
-HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3); // Blue
 
-// Initialize all channels to 999 (LEDs off for common anode)
-__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 999);
-__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 999);
-__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 999);
-/* USER CODE END 2 */
+  // Start PWM for both motors
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); // Right Motor PWM
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2); // Left Motor PWM
 
-/* Infinite loop */
-/* USER CODE BEGIN WHILE */
-while (1)
-{
-  /* USER CODE END WHILE */
+  // Initialize motors stopped
+  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
 
-  /* USER CODE BEGIN 3 */
-  
-  // ===== RED LED =====
-  // Fade in RED (decrease PWM value = brighter)
-  for(uint16_t brightness = 999; brightness > 0; brightness--)
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, brightness);
-    HAL_Delay(1);
-  }
-  
-  // Fade out RED (increase PWM value = dimmer)
-  for(uint16_t brightness = 0; brightness <= 999; brightness++)
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, brightness);
-    HAL_Delay(1);
-  }
-  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 999); // Ensure RED is fully off
-  
-  
-  // ===== GREEN LED =====
-  // Fade in GREEN
-  for(uint16_t brightness = 999; brightness > 0; brightness--)
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, brightness);
-    HAL_Delay(1);
-  }
-  
-  // Fade out GREEN
-  for(uint16_t brightness = 0; brightness <= 999; brightness++)
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, brightness);
-    HAL_Delay(1);
-  }
-  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 999); // Ensure GREEN is fully off
-  
-  
-  // ===== BLUE LED =====
-  // Fade in BLUE
-  for(uint16_t brightness = 999; brightness > 0; brightness--)
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, brightness);
-    HAL_Delay(1);
-  }
-  
-  // Fade out BLUE
-  for(uint16_t brightness = 0; brightness <= 999; brightness++)
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, brightness);
-    HAL_Delay(1);
-  }
-  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 999); // Ensure BLUE is fully off
-  
-}
-/* USER CODE END 3 *//* USER CODE END 3 */
-/* USER CODE END 3 */
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  // while (1)
-  // {
-  //   /* USER CODE END WHILE */
+  while (1)
+  {
+    /* USER CODE END WHILE */
 
-  //   /* USER CODE BEGIN 3 */
-  // }
+    /* USER CODE BEGIN 3 */
+    
+    // ===== Move Forward =====
+    // Right Motor: DIR1=HIGH, DIR2=LOW, PWM=150
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_SET);    // D8 (DIR1) = HIGH
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_RESET); // D12 (DIR2) = LOW
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 150);     // Speed
+    
+    // Left Motor: DIR1=HIGH, DIR2=LOW, PWM=150
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_7, GPIO_PIN_SET);    // D7 (DIR1) = HIGH
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, GPIO_PIN_RESET);  // D6 (DIR2) = LOW
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 150);     // Speed
+    
+    HAL_Delay(3000); // Forward for 3 seconds
+    
+    
+    // ===== Stop =====
+    // Right Motor: DIR1=HIGH, DIR2=HIGH
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_SET);    // D8 = HIGH
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_SET);   // D12 = HIGH
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+    
+    // Left Motor: DIR1=HIGH, DIR2=HIGH
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_7, GPIO_PIN_SET);    // D7 = HIGH
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, GPIO_PIN_SET);    // D6 = HIGH
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
+    
+    HAL_Delay(1000); // Stop for 1 second
+    
+    
+    // ===== Move Backward =====
+    // Right Motor: DIR1=LOW, DIR2=HIGH, PWM=150
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_RESET);  // D8 = LOW
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_SET);   // D12 = HIGH
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 150);
+    
+    // Left Motor: DIR1=LOW, DIR2=HIGH, PWM=150
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_7, GPIO_PIN_RESET);  // D7 = LOW
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, GPIO_PIN_SET);    // D6 = HIGH
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 150);
+    
+    HAL_Delay(3000); // Backward for 3 seconds
+    
+    
+    // ===== Stop =====
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_SET);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+    
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_7, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, GPIO_PIN_SET);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
+    
+    HAL_Delay(2000);
+  }
   /* USER CODE END 3 */
 }
 
