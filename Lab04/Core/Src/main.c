@@ -270,13 +270,10 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* -------------------- TASK 4: Start Input Capture Timer -------------------- */
-  // Start TIM3 in Input Capture mode with interrupt
   HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
-  
-  // Optional: Start base timer interrupt for overflow detection
   HAL_TIM_Base_Start_IT(&htim3);
   
-  // Send initialization message via UART
+  // Initialization message — no variables here, just a string
   sprintf(uart_buffer, "Frequency Measurement Started\r\n");
   HAL_UART_Transmit(&huart2, (uint8_t*)uart_buffer, strlen(uart_buffer), HAL_MAX_DELAY);
   /* -------------------------------------------------------------------------- */
